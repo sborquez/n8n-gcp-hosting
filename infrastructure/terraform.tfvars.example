@@ -1,0 +1,14 @@
+project_id         = "your-project-id"
+region            = "us-central1"
+cluster_name      = "n8n-cluster"
+node_count        = 1
+machine_type      = "e2-standard-2"
+network           = "default"
+subnetwork        = "default"
+node_locations    = ["us-central1-b", "us-central1-c"]
+postgres_user     = "n8n"
+postgres_password = "change-me-in-production"
+postgres_db       = "n8n"
+postgres_non_root_user = "n8n_user"
+postgres_non_root_password = "change-me-in-production"
+n8n_encryption_key = "change-me-in-production"
