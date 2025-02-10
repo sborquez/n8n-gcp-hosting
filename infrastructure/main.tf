@@ -3,7 +3,7 @@ provider "google" {
   region  = var.region
 }
 
-# Enable Required APIs
+ # Enable Required APIs
 resource "google_project_service" "artifact_registry" {
   project = var.project_id
   service = "artifactregistry.googleapis.com"
@@ -24,7 +24,75 @@ resource "google_project_service" "compute" {
   service = "compute.googleapis.com" # Required for IAM and networking
 }
 
-# Artifact Registry
+resource "google_project_service" "cloud_sql" {
+  project = var.project_id
+  service = "sqladmin.googleapis.com"
+}
+
+# Service Account
+## Create a service account for n8n
+resource "google_service_account" "n8n_service_account" {
+  account_id   = "n8n-service-account"
+  display_name = "n8n Service Account"
+  project      = var.project_id
+
+  depends_on = [
+    google_project_service.cloud_run,
+    google_project_service.cloud_sql
+  ]
+}
+
+## IAM Binding for Cloud SQL Client Role
+resource "google_project_iam_member" "n8n_sql_client" {
+  project = var.project_id
+  role    = "roles/cloudsql.client"
+  member  = "serviceAccount:${google_service_account.n8n_service_account.email}"
+
+  depends_on = [google_service_account.n8n_service_account]
+}
+
+# PostgreSQL
+## PostgreSQL Instance
+resource "google_sql_database_instance" "n8n_instance" {
+  name             = "n8n-db"
+  database_version = "POSTGRES_13"
+  region           = var.region
+  project          = var.project_id
+  settings {
+    tier = "db-f1-micro"
+  }
+
+  depends_on = [
+    google_project_service.cloud_sql,
+    google_project_service.compute
+  ]
+}
+
+## PostgreSQL Database
+resource "google_sql_database" "n8n_db" {
+  name     = "n8n"
+  instance = google_sql_database_instance.n8n_instance.name
+
+  depends_on = [google_sql_database_instance.n8n_instance]
+}
+
+## Random Password
+resource "random_password" "n8n_password" {
+  length           = 16
+  special          = true
+  override_special = "_%@"
+}
+
+## PostgreSQL User
+resource "google_sql_user" "n8n_user" {
+  name     = "n8n"
+  instance = google_sql_database_instance.n8n_instance.name
+  password = random_password.n8n_password.result
+  depends_on = [google_sql_database_instance.n8n_instance]
+}
+
+# N8N Service
+## Artifact Registry Repository
 resource "google_artifact_registry_repository" "n8n_repository" {
   repository_id = "n8n-images"
   format       = "DOCKER"
@@ -40,13 +108,13 @@ resource "google_artifact_registry_repository" "n8n_repository" {
   ]
 }
 
-# Define the docker url
+## Define the docker url
 locals {
   docker_url = "${google_artifact_registry_repository.n8n_repository.location}-docker.pkg.dev/${google_artifact_registry_repository.n8n_repository.project}/${google_artifact_registry_repository.n8n_repository.name}"
   depends_on = [google_artifact_registry_repository.n8n_repository]
 }
 
-# Docker Build & Push
+## Docker Build & Push
 resource "null_resource" "docker_build_push" {
   provisioner "local-exec" {
     command = <<EOT
@@ -56,27 +124,79 @@ resource "null_resource" "docker_build_push" {
   depends_on = [google_artifact_registry_repository.n8n_repository]
 }
 
-# Cloud Run Deployment
-resource "google_cloud_run_service" "n8n_service" {
+## Cloud Run Deployment
+resource "google_cloud_run_v2_service" "n8n_service" {
   name     = "n8n"
   location = var.region
+  ingress = "INGRESS_TRAFFIC_ALL"
 
+  scaling {
+    min_instance_count = 1
+  }
+
+  # Use the service account
   template {
-    spec {
+      service_account = google_service_account.n8n_service_account.email
+
+      volumes {
+        name = "cloudsql"
+        cloud_sql_instance {
+          instances = [
+            google_sql_database_instance.n8n_instance.connection_name
+          ]
+        }
+
+      }
       containers {
         image = "${local.docker_url}/n8n:latest"
         ports {
           container_port = 5678
         }
-      }
-    }
-  }
 
-  autogenerate_revision_name = true
+        resources {
+        limits = {
+          "memory" = "1Gi"
+        }
+        startup_cpu_boost = true
+      }
+
+        volume_mounts {
+          name = "cloudsql"
+          mount_path = "/cloudsql"
+        }
+
+        # Environment Variables
+        env {
+          name  = "DB_TYPE"
+          value = "postgresdb"
+        }
+        env {
+          name  = "DB_POSTGRESDB_HOST"
+          value = "/cloudsql/${google_sql_database_instance.n8n_instance.connection_name}"
+        }
+        env {
+          name  = "DB_POSTGRESDB_PORT"
+          value = "5432"
+        }
+        env {
+          name  = "DB_POSTGRESDB_DATABASE"
+          value = google_sql_database.n8n_db.name
+        }
+        env {
+          name  = "DB_POSTGRESDB_USER"
+          value = google_sql_user.n8n_user.name
+        }
+        env {
+          name  = "DB_POSTGRESDB_PASSWORD"
+          value = google_sql_user.n8n_user.password
+        }
+      }
+  }
 
   depends_on = [
     google_project_service.cloud_run,
     google_project_service.compute,
+    google_project_iam_member.n8n_sql_client,
     null_resource.docker_build_push
   ]
 }

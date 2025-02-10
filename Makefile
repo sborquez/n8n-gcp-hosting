@@ -12,8 +12,10 @@ N8N_IMAGE = "$(REGION)-docker.pkg.dev/$(PROJECT_ID)/$(N8N_IMAGE_REPO)/$(N8N_IMAG
 # Apply Terraform infrastructure
 infra-apply:
 	@echo "Applying Terraform infrastructure..."
-	cd ./infrastructure && terraform apply -auto-approve \
-		-var="project_id=$(PROJECT_ID)"
+	cd ./infrastructure && \
+		terraform init -upgrade && \
+		terraform apply -auto-approve \
+			-var="project_id=$(PROJECT_ID)"
 
 # Cloud Build and push Docker image
 build-and-push:
