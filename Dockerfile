@@ -1,5 +1,9 @@
 FROM n8nio/n8n
 
-COPY nodes/** /home/node/.n8n/custom/
+ADD nodes /nodes
+
+ENV N8N_HIDE_USAGE_PAGE=true
+ENV N8N_CUSTOM_EXTENSIONS=/nodes
+ENV N8N_HOST=localhost
 
 EXPOSE 5678/tcp

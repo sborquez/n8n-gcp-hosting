@@ -3,6 +3,9 @@ provider "google" {
   region  = var.region
 }
 
+# Get the current project number
+data "google_project" "project" {}
+
  # Enable Required APIs
 resource "google_project_service" "artifact_registry" {
   project = var.project_id
@@ -49,6 +52,15 @@ resource "google_project_iam_member" "n8n_sql_client" {
   member  = "serviceAccount:${google_service_account.n8n_service_account.email}"
 
   depends_on = [google_service_account.n8n_service_account]
+}
+
+resource "google_project_iam_member" "n8n_gcs_admin" {
+  project = var.project_id
+  role    = "roles/storage.admin"
+  member  = "serviceAccount:${google_service_account.n8n_service_account.email}"
+
+  depends_on = [google_service_account.n8n_service_account]
+
 }
 
 # PostgreSQL
@@ -108,6 +120,12 @@ resource "google_artifact_registry_repository" "n8n_repository" {
   ]
 }
 
+## Bucket for Cloud Run Volume
+resource "google_storage_bucket" "n8n_service" {
+  name    = "n8n-service"
+  location = var.region
+}
+
 ## Define the docker url
 locals {
   docker_url = "${google_artifact_registry_repository.n8n_repository.location}-docker.pkg.dev/${google_artifact_registry_repository.n8n_repository.project}/${google_artifact_registry_repository.n8n_repository.name}"
@@ -137,6 +155,15 @@ resource "google_cloud_run_v2_service" "n8n_service" {
   # Use the service account
   template {
       service_account = google_service_account.n8n_service_account.email
+      session_affinity =  true
+
+      volumes {
+        name = "persistent-storage"
+        gcs {
+          bucket = google_storage_bucket.n8n_service.name
+          read_only = false
+        }
+      }
 
       volumes {
         name = "cloudsql"
@@ -145,8 +172,8 @@ resource "google_cloud_run_v2_service" "n8n_service" {
             google_sql_database_instance.n8n_instance.connection_name
           ]
         }
-
       }
+
       containers {
         image = "${local.docker_url}/n8n:latest"
         ports {
@@ -154,11 +181,16 @@ resource "google_cloud_run_v2_service" "n8n_service" {
         }
 
         resources {
-        limits = {
-          "memory" = "1Gi"
+          limits = {
+            "memory" = "1Gi"
+          }
+          startup_cpu_boost = true
         }
-        startup_cpu_boost = true
-      }
+
+        volume_mounts {
+          name = "persistent-storage"
+          mount_path = "/home/node/.n8n"
+        }
 
         volume_mounts {
           name = "cloudsql"
@@ -166,6 +198,13 @@ resource "google_cloud_run_v2_service" "n8n_service" {
         }
 
         # Environment Variables
+        ## Hostname
+        env {
+          name  = "N8N_HOST"
+          value = "https://n8n-${data.google_project.project.number}.${var.region}.run.app"
+        }
+
+        ## Database Configuration
         env {
           name  = "DB_TYPE"
           value = "postgresdb"
@@ -197,6 +236,8 @@ resource "google_cloud_run_v2_service" "n8n_service" {
     google_project_service.cloud_run,
     google_project_service.compute,
     google_project_iam_member.n8n_sql_client,
+    google_project_iam_member.n8n_gcs_admin,
+    google_storage_bucket.n8n_service,
     null_resource.docker_build_push
   ]
 }
