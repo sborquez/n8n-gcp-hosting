@@ -59,15 +59,6 @@ resource "google_project_iam_member" "n8n_sql_client" {
   depends_on = [google_service_account.n8n_service_account]
 }
 
-# resource "google_project_iam_member" "n8n_gcs_admin" {
-#   project = var.project_id
-#   role    = "roles/storage.admin"
-#   member  = "serviceAccount:${google_service_account.n8n_service_account.email}"
-
-#   depends_on = [google_service_account.n8n_service_account]
-
-# }
-
 # PostgreSQL
 ## PostgreSQL Instance
 resource "google_sql_database_instance" "n8n_instance" {
@@ -199,9 +190,13 @@ locals {
 resource "null_resource" "docker_build_push" {
   provisioner "local-exec" {
     command = <<EOT
-      docker build  --platform linux/amd64 --push -t ${local.docker_url}/n8n:latest ../
+      gcloud builds submit \
+        --config=../cloudbuild.yaml \
+        --substitutions=_IMAGE_NAME=${local.docker_url}/n8n:latest \
+        ../
     EOT
   }
+
   depends_on = [google_artifact_registry_repository.n8n_repository]
 }
 
