@@ -32,6 +32,11 @@ resource "google_project_service" "cloud_sql" {
   service = "sqladmin.googleapis.com"
 }
 
+resource "google_project_service" "secret_manager" {
+  project = var.project_id
+  service = "secretmanager.googleapis.com"
+}
+
 # Service Account
 ## Create a service account for n8n
 resource "google_service_account" "n8n_service_account" {
@@ -101,6 +106,58 @@ resource "google_sql_user" "n8n_user" {
   instance = google_sql_database_instance.n8n_instance.name
   password = random_password.n8n_password.result
   depends_on = [google_sql_database_instance.n8n_instance]
+}
+
+## PostgreSQL User Secrets
+resource "google_secret_manager_secret" "n8n_db_user" {
+  secret_id = "n8n_db_user"
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "n8n_db_user" {
+  secret      = google_secret_manager_secret.n8n_db_user.id
+  secret_data = google_sql_user.n8n_user.name
+
+  depends_on = [
+    google_secret_manager_secret.n8n_db_user
+  ]
+}
+
+resource "google_secret_manager_secret_iam_member" "n8n_secret_accessor_sql_user" {
+  project = var.project_id
+  secret_id = google_secret_manager_secret.n8n_db_user.secret_id
+  role = "roles/secretmanager.secretAccessor"
+  member  = "serviceAccount:${google_service_account.n8n_service_account.email}"
+
+  depends_on = [google_secret_manager_secret.n8n_db_user]
+}
+
+resource "google_secret_manager_secret" "n8n_db_password" {
+  secret_id = "n8n_db_password"
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_version" "n8n_db_password" {
+  secret      = google_secret_manager_secret.n8n_db_password.id
+  secret_data = random_password.n8n_password.result
+
+  depends_on = [
+    random_password.n8n_password,
+    google_secret_manager_secret.n8n_db_password
+  ]
+}
+
+resource "google_secret_manager_secret_iam_member" "n8n_secret_accessor_sql_password" {
+  project = var.project_id
+  secret_id = google_secret_manager_secret.n8n_db_password.secret_id
+  role = "roles/secretmanager.secretAccessor"
+  member  = "serviceAccount:${google_service_account.n8n_service_account.email}"
+
+  depends_on = [google_secret_manager_secret.n8n_db_password]
 }
 
 # N8N Service
@@ -222,12 +279,23 @@ resource "google_cloud_run_v2_service" "n8n_service" {
           value = google_sql_database.n8n_db.name
         }
         env {
-          name  = "DB_POSTGRESDB_USER"
-          value = google_sql_user.n8n_user.name
+          name = "DB_POSTGRESDB_USER"
+          value_source {
+            secret_key_ref {
+              secret  = google_secret_manager_secret.n8n_db_user.name
+              version = "latest"
+            }
+          }
         }
+
         env {
-          name  = "DB_POSTGRESDB_PASSWORD"
-          value = google_sql_user.n8n_user.password
+          name = "DB_POSTGRESDB_PASSWORD"
+          value_source {
+            secret_key_ref {
+              secret  = google_secret_manager_secret.n8n_db_password.name
+              version = "latest"
+            }
+          }
         }
       }
   }
@@ -238,7 +306,12 @@ resource "google_cloud_run_v2_service" "n8n_service" {
     google_project_iam_member.n8n_sql_client,
     google_project_iam_member.n8n_gcs_admin,
     google_storage_bucket.n8n_service,
-    null_resource.docker_build_push
+    null_resource.docker_build_push,
+    google_sql_database_instance.n8n_instance,
+    google_sql_database.n8n_db,
+    google_sql_user.n8n_user,
+    google_secret_manager_secret.n8n_db_user,
+    google_secret_manager_secret.n8n_db_password,
   ]
 }
 
