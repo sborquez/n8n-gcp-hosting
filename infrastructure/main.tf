@@ -59,14 +59,14 @@ resource "google_project_iam_member" "n8n_sql_client" {
   depends_on = [google_service_account.n8n_service_account]
 }
 
-resource "google_project_iam_member" "n8n_gcs_admin" {
-  project = var.project_id
-  role    = "roles/storage.admin"
-  member  = "serviceAccount:${google_service_account.n8n_service_account.email}"
+# resource "google_project_iam_member" "n8n_gcs_admin" {
+#   project = var.project_id
+#   role    = "roles/storage.admin"
+#   member  = "serviceAccount:${google_service_account.n8n_service_account.email}"
 
-  depends_on = [google_service_account.n8n_service_account]
+#   depends_on = [google_service_account.n8n_service_account]
 
-}
+# }
 
 # PostgreSQL
 ## PostgreSQL Instance
@@ -181,6 +181,12 @@ resource "google_artifact_registry_repository" "n8n_repository" {
 resource "google_storage_bucket" "n8n_service" {
   name    = "n8n-service"
   location = var.region
+}
+
+resource "google_storage_bucket_iam_member" "n8n_bucket_access" {
+  bucket = google_storage_bucket.n8n_service.name
+  role   = "roles/storage.objectAdmin"
+  member = "serviceAccount:${google_service_account.n8n_service_account.email}"
 }
 
 ## Define the docker url
@@ -304,7 +310,7 @@ resource "google_cloud_run_v2_service" "n8n_service" {
     google_project_service.cloud_run,
     google_project_service.compute,
     google_project_iam_member.n8n_sql_client,
-    google_project_iam_member.n8n_gcs_admin,
+    google_storage_bucket_iam_member.n8n_bucket_access,
     google_storage_bucket.n8n_service,
     null_resource.docker_build_push,
     google_sql_database_instance.n8n_instance,

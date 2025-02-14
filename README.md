@@ -10,7 +10,7 @@ make infra-apply
 - [x] Mount n8n in Cloud Run with Cloud SQL
 - [x] Add persistent storage to n8n with Cloud Storage
 - [x] Protect SQL password with Secret Manager
-- [ ] Trim down Service Account permissions
+- [x] Trim down Service Account permissions
 - [ ] Add Cloud Build step instead of build locally
 - [ ] Add Custom node to n8n
 - [ ] Protect n8n with Cloud IAP? (maybe not needed)
