@@ -259,7 +259,7 @@ resource "google_cloud_run_v2_service" "n8n_service" {
         ## Hostname
         env {
           name  = "N8N_HOST"
-          value = "https://n8n-${data.google_project.project.number}.${var.region}.run.app"
+          value = "n8n-${data.google_project.project.number}.${var.region}.run.app"
         }
 
         ## Database Configuration
