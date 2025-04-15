@@ -7,34 +7,22 @@ provider "google" {
 data "google_project" "project" {}
 
  # Enable Required APIs
-resource "google_project_service" "artifact_registry" {
-  project = var.project_id
-  service = "artifactregistry.googleapis.com"
+locals {
+  required_apis = [
+    "artifactregistry.googleapis.com",
+    "run.googleapis.com",
+    "cloudbuild.googleapis.com",
+    "compute.googleapis.com",
+    "sqladmin.googleapis.com",
+    "secretmanager.googleapis.com"
+  ]
 }
 
-resource "google_project_service" "cloud_run" {
-  project = var.project_id
-  service = "run.googleapis.com"
-}
-
-resource "google_project_service" "cloud_build" {
-  project = var.project_id
-  service = "cloudbuild.googleapis.com"
-}
-
-resource "google_project_service" "compute" {
-  project = var.project_id
-  service = "compute.googleapis.com" # Required for IAM and networking
-}
-
-resource "google_project_service" "cloud_sql" {
-  project = var.project_id
-  service = "sqladmin.googleapis.com"
-}
-
-resource "google_project_service" "secret_manager" {
-  project = var.project_id
-  service = "secretmanager.googleapis.com"
+resource "google_project_service" "project_services" {
+  for_each = toset(local.required_apis)
+  project = data.google_project.project.number
+  service = each.key
+  disable_on_destroy = false
 }
 
 # Service Account
@@ -45,8 +33,7 @@ resource "google_service_account" "n8n_service_account" {
   project      = var.project_id
 
   depends_on = [
-    google_project_service.cloud_run,
-    google_project_service.cloud_sql
+    google_project_service.project_services
   ]
 }
 
@@ -71,8 +58,7 @@ resource "google_sql_database_instance" "n8n_instance" {
   }
 
   depends_on = [
-    google_project_service.cloud_sql,
-    google_project_service.compute
+    google_project_service.project_services
   ]
 }
 
@@ -164,7 +150,7 @@ resource "google_artifact_registry_repository" "n8n_repository" {
   }
 
   depends_on = [
-    google_project_service.artifact_registry
+    google_project_service.project_services
   ]
 }
 
@@ -302,8 +288,7 @@ resource "google_cloud_run_v2_service" "n8n_service" {
   }
 
   depends_on = [
-    google_project_service.cloud_run,
-    google_project_service.compute,
+    google_project_service.project_services,
     google_project_iam_member.n8n_sql_client,
     google_storage_bucket_iam_member.n8n_bucket_access,
     google_storage_bucket.n8n_service,

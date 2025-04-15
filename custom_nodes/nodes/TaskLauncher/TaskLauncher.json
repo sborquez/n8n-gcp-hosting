@@ -1,5 +1,5 @@
 {
-	"node": "n8n-nodes-base.AutomationLauncher",
+	"node": "n8n-nodes-base.TaskLauncher",
 	"nodeVersion": "1.0",
 	"codexVersion": "1.0",
 	"categories": [
