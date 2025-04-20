@@ -38,10 +38,10 @@ export class TaskLauncher implements INodeType {
 		inputs: ['main'] as NodeConnectionType[],
 		outputs: ['main'] as NodeConnectionType[],
 		credentials: [
-			// {
-			// 	name: 'taskLauncherApi',
-			// 	required: true,
-			// },
+			{
+				name: 'taskLauncherApiKey',
+				required: true,
+			},
 		],
 		properties: [
 			{
@@ -115,8 +115,8 @@ export class TaskLauncher implements INodeType {
 			// Load available tasks
 			async getTasks(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 				const taskServerUrl = this.getCurrentNodeParameter('taskServerUrl') as string;
-				// TODO: extract this email from the logged user
-				const userEmail = 'test@user.com';
+				const credentials = await this.getCredentials('taskLauncherApiKey');
+				const userAPIToken = credentials?.apiKey as string;
 				let response;
 				try {
 					const endpoint = new URL('/tasks', taskServerUrl);
@@ -126,7 +126,7 @@ export class TaskLauncher implements INodeType {
 							headers: {
 								'Accept': 'application/json',
 								'Content-Type': 'application/json',
-								'x-user-email': userEmail,
+								'X-User-Api-Key': userAPIToken,
 							},
 							method: 'GET',
 							url: endpoint.toString(),
@@ -173,8 +173,8 @@ export class TaskLauncher implements INodeType {
 				}
 				const taskServerUrl = this.getCurrentNodeParameter('taskServerUrl') as string;
 				const taskId = this.getCurrentNodeParameter('taskId') as string;
-				// TODO: extract this email from the logged user
-				const userEmail = 'test@user.com';
+				const credentials = await this.getCredentials('taskLauncherApiKey');
+				const userAPIToken = credentials?.apiKey as string;
 				let response;
 				try {
 					const endpoint = new URL(`/tasks/${taskId}`, taskServerUrl);
@@ -183,7 +183,7 @@ export class TaskLauncher implements INodeType {
 							headers: {
 								'Accept': 'application/json',
 								'Content-Type': 'application/json',
-								'x-user-email': userEmail,
+								'X-User-Api-Key': userAPIToken,
 							},
 							method: 'GET',
 							url: endpoint.toString(),
@@ -247,8 +247,8 @@ export class TaskLauncher implements INodeType {
 					body[key] = value;
 				}
 			}
-			// TODO: extract this email from the logged user or use another way to identify the user
-			const userEmail = 'test@user.com';
+			const credentials = await this.getCredentials('taskLauncherApiKey');
+			const userAPIToken = credentials?.apiKey as string;
 			let response;
 			// Start new Job
 			try {
@@ -258,7 +258,7 @@ export class TaskLauncher implements INodeType {
 						headers: {
 							'Accept': 'application/json',
 							'Content-Type': 'application/json',
-							'x-user-email': userEmail,
+							'X-User-Api-Key': userAPIToken,
 						},
 						method: 'POST',
 						url: endpoint.toString(),
@@ -291,8 +291,8 @@ export class TaskLauncher implements INodeType {
 			const taskServerUrl = this.getNodeParameter('taskServerUrl', i) as string;
 			const task = sentTasks[i];
 			const jobId = task.jobId;
-			// TODO: extract this email from the logged user
-			const userEmail = 'test@user.com';
+			const credentials = await this.getCredentials('taskLauncherApiKey');
+			const userAPIToken = credentials?.apiKey as string;
 			let response;
 			while (true) {
 				try {
@@ -302,7 +302,7 @@ export class TaskLauncher implements INodeType {
 							headers: {
 								'Accept': 'application/json',
 								'Content-Type': 'application/json',
-								'x-user-email': userEmail,
+								'X-User-Api-Key': userAPIToken,
 							},
 							method: 'GET',
 							url: endpoint.toString(),

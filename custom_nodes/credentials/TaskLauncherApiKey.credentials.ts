@@ -5,9 +5,9 @@ import {
 	INodeProperties,
 } from 'n8n-workflow';
 
-export class FriendGridApi implements ICredentialType {
-	name = 'friendGridApi';
-	displayName = 'FriendGrid API';
+export class TaskLauncherApiKey implements ICredentialType {
+	name = 'taskLauncherApiKey';
+	displayName = 'TaskLauncher API';
 	properties: INodeProperties[] = [
 		{
 			displayName: 'API Key',
@@ -21,15 +21,15 @@ export class FriendGridApi implements ICredentialType {
 		type: 'generic',
 		properties: {
 			headers: {
-				Authorization: '=Bearer {{$credentials.apiKey}}',
+				'X-User-Api-Key': '={{$credentials.apiKey}}',
 			},
 		},
 	};
 
-	test: ICredentialTestRequest = {
-		request: {
-			baseURL: 'https://api.sendgrid.com/v3',
-			url: '/marketing/contacts',
-		},
-	};
+	// test: ICredentialTestRequest = {
+	// 	request: {
+	// 		baseURL: 'https://api.sendgrid.com/v3',
+	// 		url: '/marketing/contacts',
+	// 	},
+	// };
 }
