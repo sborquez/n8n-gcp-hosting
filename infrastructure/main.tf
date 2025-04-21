@@ -12,9 +12,7 @@ locals {
     "artifactregistry.googleapis.com",
     "run.googleapis.com",
     "cloudbuild.googleapis.com",
-    "compute.googleapis.com",
-    "sqladmin.googleapis.com",
-    "secretmanager.googleapis.com"
+    "compute.googleapis.com"
   ]
 }
 
@@ -37,104 +35,15 @@ resource "google_service_account" "n8n_service_account" {
   ]
 }
 
-## IAM Binding for Cloud SQL Client Role
-resource "google_project_iam_member" "n8n_sql_client" {
-  project = var.project_id
-  role    = "roles/cloudsql.client"
-  member  = "serviceAccount:${google_service_account.n8n_service_account.email}"
+# Database Service
+module "cloudsql" {
+  source = "./modules/cloudsql"
 
-  depends_on = [google_service_account.n8n_service_account]
-}
+  project_id     = var.project_id
+  region         = var.region
+  service_account_email = google_service_account.n8n_service_account.email
 
-# PostgreSQL
-## PostgreSQL Instance
-resource "google_sql_database_instance" "n8n_instance" {
-  name             = "n8n-db"
-  database_version = "POSTGRES_13"
-  region           = var.region
-  project          = var.project_id
-  settings {
-    tier = "db-f1-micro"
-  }
-
-  depends_on = [
-    google_project_service.project_services
-  ]
-}
-
-## PostgreSQL Database
-resource "google_sql_database" "n8n_db" {
-  name     = "n8n"
-  instance = google_sql_database_instance.n8n_instance.name
-
-  depends_on = [google_sql_database_instance.n8n_instance]
-}
-
-## Random Password
-resource "random_password" "n8n_password" {
-  length           = 16
-  special          = true
-  override_special = "_%@"
-}
-
-## PostgreSQL User
-resource "google_sql_user" "n8n_user" {
-  name     = "n8n"
-  instance = google_sql_database_instance.n8n_instance.name
-  password = random_password.n8n_password.result
-  depends_on = [google_sql_database_instance.n8n_instance]
-}
-
-## PostgreSQL User Secrets
-resource "google_secret_manager_secret" "n8n_db_user" {
-  secret_id = "n8n_db_user"
-  replication {
-    auto {}
-  }
-}
-
-resource "google_secret_manager_secret_version" "n8n_db_user" {
-  secret      = google_secret_manager_secret.n8n_db_user.id
-  secret_data = google_sql_user.n8n_user.name
-
-  depends_on = [
-    google_secret_manager_secret.n8n_db_user
-  ]
-}
-
-resource "google_secret_manager_secret_iam_member" "n8n_secret_accessor_sql_user" {
-  project = var.project_id
-  secret_id = google_secret_manager_secret.n8n_db_user.secret_id
-  role = "roles/secretmanager.secretAccessor"
-  member  = "serviceAccount:${google_service_account.n8n_service_account.email}"
-
-  depends_on = [google_secret_manager_secret.n8n_db_user]
-}
-
-resource "google_secret_manager_secret" "n8n_db_password" {
-  secret_id = "n8n_db_password"
-  replication {
-    auto {}
-  }
-}
-
-resource "google_secret_manager_secret_version" "n8n_db_password" {
-  secret      = google_secret_manager_secret.n8n_db_password.id
-  secret_data = random_password.n8n_password.result
-
-  depends_on = [
-    random_password.n8n_password,
-    google_secret_manager_secret.n8n_db_password
-  ]
-}
-
-resource "google_secret_manager_secret_iam_member" "n8n_secret_accessor_sql_password" {
-  project = var.project_id
-  secret_id = google_secret_manager_secret.n8n_db_password.secret_id
-  role = "roles/secretmanager.secretAccessor"
-  member  = "serviceAccount:${google_service_account.n8n_service_account.email}"
-
-  depends_on = [google_secret_manager_secret.n8n_db_password]
+  depends_on = [ google_service_account.n8n_service_account ]
 }
 
 # N8N Service
@@ -213,7 +122,7 @@ resource "google_cloud_run_v2_service" "n8n_service" {
         name = "cloudsql"
         cloud_sql_instance {
           instances = [
-            google_sql_database_instance.n8n_instance.connection_name
+            module.cloudsql.db_instance_connection_name
           ]
         }
       }
@@ -255,7 +164,7 @@ resource "google_cloud_run_v2_service" "n8n_service" {
         }
         env {
           name  = "DB_POSTGRESDB_HOST"
-          value = "/cloudsql/${google_sql_database_instance.n8n_instance.connection_name}"
+          value = "/cloudsql/${module.cloudsql.db_instance_connection_name}"
         }
         env {
           name  = "DB_POSTGRESDB_PORT"
@@ -263,13 +172,13 @@ resource "google_cloud_run_v2_service" "n8n_service" {
         }
         env {
           name  = "DB_POSTGRESDB_DATABASE"
-          value = google_sql_database.n8n_db.name
+          value = module.cloudsql.db_name
         }
         env {
           name = "DB_POSTGRESDB_USER"
           value_source {
             secret_key_ref {
-              secret  = google_secret_manager_secret.n8n_db_user.name
+              secret  = module.cloudsql.db_user_secret_name
               version = "latest"
             }
           }
@@ -279,7 +188,7 @@ resource "google_cloud_run_v2_service" "n8n_service" {
           name = "DB_POSTGRESDB_PASSWORD"
           value_source {
             secret_key_ref {
-              secret  = google_secret_manager_secret.n8n_db_password.name
+              secret  = module.cloudsql.db_password_secret_name
               version = "latest"
             }
           }
@@ -289,45 +198,9 @@ resource "google_cloud_run_v2_service" "n8n_service" {
 
   depends_on = [
     google_project_service.project_services,
-    google_project_iam_member.n8n_sql_client,
+    module.cloudsql,
     google_storage_bucket_iam_member.n8n_bucket_access,
     google_storage_bucket.n8n_service,
     null_resource.docker_build_push,
-    google_sql_database_instance.n8n_instance,
-    google_sql_database.n8n_db,
-    google_sql_user.n8n_user,
-    google_secret_manager_secret.n8n_db_user,
-    google_secret_manager_secret.n8n_db_password,
   ]
 }
-
-# Optional IAM Binding for Public Access (Adjust as Needed)
-# resource "google_cloud_run_service_iam_binding" "n8n_public" {
-#   service    = google_cloud_run_service.n8n_service.name
-#   location   = var.region
-#   role       = "roles/run.invoker"
-#   members    = ["allUsers"] # Allows public access; modify this for restricted access
-
-#   depends_on = [google_cloud_run_service.n8n_service]
-# }
-
-# Create a group for n8n users
-# resource "google_cloud_identity_group" "n8n_users_group" {
-#   parent      = "customers/${data.google_client_config.current.project_number}"
-#   display_name = "n8n-users"
-#   labels = {
-#     "app" = "n8n"
-#   }
-
-#   group_key {
-#     id = "n8n-users@${google_project_service.cloud_run.project}.iam.gserviceaccount.com"
-#   }
-# }
-
-# # Grant IAP access to the group
-# resource "google_iap_web_iam_member" "iap_access" {
-#   project       = var.project_id
-#   role          = "roles/iap.httpsResourceAccessor"
-#   member        = "group:${google_cloud_identity_group.n8n_users_group.group_key.id}"
-#   depends_on = [google_cloud_identity_group.n8n_users_group, google_cloud_run_service.n8n_service]
-# }
