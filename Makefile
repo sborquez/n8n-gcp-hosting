@@ -7,7 +7,7 @@ N8N_TAG = latest
 N8N_IMAGE = "$(REGION)-docker.pkg.dev/$(PROJECT_ID)/$(N8N_IMAGE_REPO)/$(N8N_IMAGE_NAME):$(N8N_TAG)"
 
 
-.PHONY: infra-apply build-local push-local run-local build-and-push deploy-jobs
+.PHONY: infra-apply push-local build-and-push
 
 # Apply Terraform infrastructure
 infra-apply:
@@ -20,5 +20,5 @@ infra-apply:
 # Cloud Build and push Docker image
 build-and-push:
 	@echo "Building and pushing Docker image..."
-	gcloud builds submit --config cloudbuild.yaml \
+	gcloud builds submit --region=$(REGION) --config cloudbuild.yaml \
 		--substitutions=_IMAGE_NAME=$(N8N_IMAGE)

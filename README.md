@@ -11,7 +11,7 @@ make infra-apply
 - [x] Add persistent storage to n8n with Cloud Storage
 - [x] Protect SQL password with Secret Manager
 - [x] Trim down Service Account permissions
-- [ ] Add Cloud Build step instead of build locally
+- [x] Add Cloud Build step instead of build locally
 - [ ] Add Custom node to n8n
 - [ ] Protect n8n with Cloud IAP? (maybe not needed)
 - [ ] Add workflow node to n8n
