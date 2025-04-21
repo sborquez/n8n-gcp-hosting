@@ -12,9 +12,11 @@ make infra-apply
 - [x] Protect SQL password with Secret Manager
 - [x] Trim down Service Account permissions
 - [x] Add Cloud Build step instead of build locally
-- [ ] Add Custom node to n8n
-- [ ] Protect n8n with Cloud IAP? (maybe not needed)
-- [ ] Add workflow node to n8n
+- [x] Write Custom node
+- [ ] Add support for alternative DB (free Supabase DB)
+- [ ] Add Custom node to n8n (hosted)
+- [ ] Protect n8n with Cloud IAP? (check IAP for Cloud Run)
+- [ ] Add SA to n8n (hosted)
 
 ## Resources
 

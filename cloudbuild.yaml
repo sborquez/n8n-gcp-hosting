@@ -1,19 +1,51 @@
-options:
-  env:
-    - "DOCKER_BUILDKIT=1"
+substitutions:
+  # _IMAGE_NAME: 'gcr.io/$PROJECT_ID/image'
+  _PROJECT_ID: ""
+  _VERSION: "0.1.0"
+  _REGION: "us-central1"
+  _REPOSITORY_NAME: "n8n-images"
+  _IMAGE_NAME: "n8n"
+
 
 steps:
-- name: 'gcr.io/cloud-builders/docker'
-  args: [
-    'build',
-    '-t', '${_IMAGE_NAME}',
-    '.',
-  ]
-- name: 'gcr.io/cloud-builders/docker'
-  args: [
-    'push',
-    '${_IMAGE_NAME}',
-  ]
+  - id: 'Build Docker Image'
+    name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'build',
+      '-t', '$_REGION-docker.pkg.dev/${_PROJECT_ID}/$_REPOSITORY_NAME/$_IMAGE_NAME:${_VERSION}',
+      '-t', '$_REGION-docker.pkg.dev/${_PROJECT_ID}/$_REPOSITORY_NAME/$_IMAGE_NAME:latest',
+      '.',
+    ]
+  - id: 'Push Docker Image Version'
+    name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'push',
+      '$_REGION-docker.pkg.dev/${_PROJECT_ID}/$_REPOSITORY_NAME/$_IMAGE_NAME:${_VERSION}'
+    ]
+    waitFor: ['Build Docker Image']
+  - id: 'Push Docker Image Latest'
+    name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'push',
+      '$_REGION-docker.pkg.dev/${_PROJECT_ID}/$_REPOSITORY_NAME/$_IMAGE_NAME:$_VERSION'
+    ]
+    waitFor: ['Build Docker Image']
 
-substitutions:
-  _IMAGE_NAME: 'gcr.io/$PROJECT_ID/image'
+  - id: 'Push Docker Image Latest'
+    name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'push',
+      '$_REGION-docker.pkg.dev/${_PROJECT_ID}/$_REPOSITORY_NAME/$_IMAGE_NAME:latest'
+    ]
+
+  # Deploy to Cloud Run new revision
+  - id : 'Deploy new revision'
+    name: 'gcr.io/cloud-builders/gcloud'
+    args: [
+      'run',
+      'deploy',
+      '$_IMAGE_NAME',
+      '--region', '$_REGION',
+      '--image', '$_REGION-docker.pkg.dev/${_PROJECT_ID}/$_REPOSITORY_NAME/$_IMAGE_NAME:latest',
+    ]
+    waitFor: ['Push Docker Image Latest']

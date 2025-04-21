@@ -1,7 +1,9 @@
 FROM n8nio/n8n
 
-ADD nodes /nodes
+ADD custom_nodes /nodes
 
+
+ENV N8N_RUNNERS_ENABLED=true
 ENV N8N_HIDE_USAGE_PAGE=true
 ENV N8N_CUSTOM_EXTENSIONS=/nodes
 ENV N8N_HOST=localhost
